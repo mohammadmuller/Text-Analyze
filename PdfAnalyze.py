@@ -2,16 +2,15 @@ import sys
 import os
 import re
 import fitz  # PyMuPDF
+from hazm import Normalizer, word_tokenize
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QFileDialog, QLineEdit, QMessageBox
 )
 from PyQt5.QtCore import Qt
+
 import matplotlib.pyplot as plt
 
-
-# ---- پردازش متن ----
 def extract_text_from_pdf(file_path):
-    """خواندن متن از فایل PDF"""
     text = ""
     try:
         with fitz.open(file_path) as doc:
@@ -22,46 +21,18 @@ def extract_text_from_pdf(file_path):
     return text
 
 
-def normalize_persian(text):
-    """نرمال‌سازی ساده‌ی متن فارسی بدون hazm"""
-    # حذف نیم‌فاصله‌های اضافی
+def normalize_spaces(text):
     text = re.sub(r"[\u200c\s]+", " ", text)
-
-    # یکنواخت‌سازی حروف
-    replacements = {
-        "ي": "ی",
-        "ى": "ی",
-        "ك": "ک",
-        "ؤ": "و",
-        "أ": "ا",
-        "إ": "ا",
-        "ۀ": "ه",
-    }
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-
-    # حذف فاصله‌های اضافی و نویزهای متداول
-    text = re.sub(r"[ـ]+", "", text)  # کشیده‌ها
-    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 
-def tokenize_words(text):
-    """توکن‌سازی ساده‌ی فارسی (بدون hazm)"""
-    # جداسازی بر اساس فاصله و علائم نگارشی
-    tokens = re.split(r"[^\w\u0600-\u06FF]+", text)
-    return [t for t in tokens if t]
-
-
 def make_flexible_pattern(phrase):
-    """ساخت الگوی انعطاف‌پذیر برای جست‌وجوی عبارت"""
     words = phrase.split()
     flexible_space = r"[\s\u200c]*"
     pattern = flexible_space.join(map(re.escape, words))
     return pattern
 
 
-# ---- رابط گرافیکی ----
 class PDFAnalyzerApp(QWidget):
     def __init__(self):
         super().__init__()
@@ -125,8 +96,9 @@ class PDFAnalyzerApp(QWidget):
             QMessageBox.warning(self, "خطا", "هیچ فایل PDF در پوشه پیدا نشد.")
             return
 
-        phrase = normalize_persian(phrase)
-        phrase = re.sub(r"\s+", " ", phrase)
+        normalizer = Normalizer()
+        phrase = normalizer.normalize(phrase)
+        phrase = normalize_spaces(phrase)
         pattern = make_flexible_pattern(phrase)
 
         results = []
@@ -135,20 +107,20 @@ class PDFAnalyzerApp(QWidget):
         for pdf in pdf_files:
             pdf_path = os.path.join(folder_path, pdf)
             text = extract_text_from_pdf(pdf_path)
-            text = normalize_persian(text)
+            text = normalizer.normalize(text)
+            text = normalize_spaces(text)
 
             count = len(re.findall(pattern, text))
             total_occurrences += count
 
-            words = tokenize_words(text)
+            words = word_tokenize(text)
             total_words = len(words)
 
             results.append((pdf, total_words, count))
-
         self.show_results(results, phrase, total_occurrences, folder_path)
 
     def show_results(self, results, phrase, total_occurrences, folder_path):
-        output_path = os.path.join(folder_path, "results.txt")
+        output_path = os.path.join(folder_path, "نتایج.txt")
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(f"🔎 عبارت مورد بررسی: «{phrase}»\n\n")
             for pdf, total_words, count in results:
@@ -156,7 +128,6 @@ class PDFAnalyzerApp(QWidget):
                 f.write(f"  کل کلمات: {total_words}\n")
                 f.write(f"  تعداد وقوع «{phrase}»: {count}\n\n")
             f.write(f"📊 مجموع وقوع «{phrase}» در همه PDFها: {total_occurrences}\n")
-
         pdf_names = [r[0] for r in results]
         counts = [r[2] for r in results]
 
